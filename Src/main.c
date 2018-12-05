@@ -41,7 +41,6 @@
 
 /* USER CODE BEGIN Includes */
 #include "math.h"
-#include "lcd.h"
 /* USER CODE END Includes */
 
 /* Private variables ---------------------------------------------------------*/
@@ -66,13 +65,17 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
+
+/*
+ * This interruption is called whenever the TIM11 finishes, in order to update
+ * the CCR register of TIM1, to change it's duty cycle
+*/
 HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if (htim->Instance == TIM11) {
 		value++;
 		if (value >= 195)
 			value = 0;
 		__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, tabela_valores[value]);
-		//__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, tabela_valores[0]);
 	}
 }
 
@@ -115,41 +118,27 @@ int main(void) {
 	MX_TIM11_Init();
 	/* USER CODE BEGIN 2 */
 
-	__GPIOA_CLK_ENABLE();
-	LCD.enable = GPIO_PIN_0;
-	LCD.rs = GPIO_PIN_1;
-	LCD.pinos[0] = GPIO_PIN_5;
-	LCD.pinos[1] = GPIO_PIN_6;
-	LCD.pinos[2] = GPIO_PIN_4;
-	LCD.pinos[3] = GPIO_PIN_10;
-	LCD.porta = GPIOA;
-
-	init_display();
-
-	clear();
-	printf("Testando?");
-
 	char freq[5];
 	char texto[50];
 	int freq_int, size;
-
-	int grr = 0;
 	int cont = 0;
+
+	//	Generate an array of points to use as the CCR of the TIM1
 	for (float aux = 0; aux < 360; aux += (360. / 195.), cont++) {
-		//tabela_valores[cont] = (sin(aux * M_PI / 180) * 110) + 128;
-		//tabela_valores[cont] = (sin(aux * M_PI / 180) * 65) + 80;
 		tabela_valores[cont] = (sin(aux * M_PI / 180) * 75) + 98;
-		//tabela_valores[cont] = (sin(aux * M_PI / 180) * 70) + 98;
 	}
 
+	//	Initialize the TIM11 with interruption
 	HAL_TIM_Base_Start_IT(&htim11);
 
+	/*	Starts the TIM1 in PWM mode, operating with channel 1 and channel 1
+	 *  complementary.
+	 *  This complementary channel is basically the PWM but inverted.
+	 */
 	HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);
 	HAL_TIM_PWM_Start_IT(&htim1, TIM_CHANNEL_1);
 
 	__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, tabela_valores[0]);
-
-	grr = __HAL_TIM_GET_COMPARE(&htim1, TIM_CHANNEL_1);
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
@@ -160,6 +149,9 @@ int main(void) {
 
 		/* USER CODE BEGIN 3 */
 
+		/*	Checks if the ARM received some value through the serial to
+		 *  update the frequency of TIM11
+		 */
 		if (HAL_UART_Receive(&huart2, freq, 3, 1) == HAL_OK) {
 
 			freq_int = atoi(freq);
